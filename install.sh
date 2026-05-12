@@ -480,8 +480,7 @@ fi
 exec "$CCM_SH" "$@"
 EOF
   else
-    local content
-    content="$(cat <<'EOF'
+    cat > "$target" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 CCM_SH="__DATA_DIR__/ccm.sh"
@@ -491,9 +490,7 @@ if [[ ! -f "$CCM_SH" ]]; then
 fi
 exec "$CCM_SH" "$@"
 EOF
-)"
-    content="${content//__DATA_DIR__/$data_dir}"
-    printf '%s\n' "$content" > "$target"
+      sed "s|__DATA_DIR__|$data_dir|g" "$target" > "${target}.tmp" && mv "${target}.tmp" "$target"
   fi
 
   run_cmd "$bin_dir" chmod +x "$target"
@@ -630,8 +627,7 @@ else
 fi
 EOF
   else
-    local content
-    content="$(cat <<'EOF'
+    cat > "$target" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 CCM="__DATA_DIR__/ccm.sh"
@@ -751,9 +747,7 @@ else
     exec claude "${claude_args[@]}"
 fi
 EOF
-)"
-    content="${content//__DATA_DIR__/$data_dir}"
-    printf '%s\n' "$content" > "$target"
+      sed "s|__DATA_DIR__|$data_dir|g" "$target" > "${target}.tmp" && mv "${target}.tmp" "$target"
   fi
 
   run_cmd "$bin_dir" chmod +x "$target"
