@@ -296,6 +296,11 @@ SEED_MODEL=ark-code-latest
 CLAUDE_MODEL=claude-sonnet-4-5-20250929
 OPUS_MODEL=claude-opus-4-6
 HAIKU_MODEL=claude-haiku-4-5-20251001
+
+# Fine-Grained Model Fields (optional, falls back to main model above)
+# Use {PROVIDER}_SONNET_MODEL, _OPUS_MODEL, _HAIKU_MODEL, _SUBAGENT_MODEL, _EFFORT_LEVEL
+# Example: DEEPSEEK_HAIKU_MODEL=deepseek/deepseek-v3.2:free
+#          GLM_EFFORT_LEVEL=max
 ```
 
 ---
@@ -318,7 +323,8 @@ eval "$(./ccm.sh glm china)"
 
 ## Notes
 
-- **7 env vars exported per provider**: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`
+- **Exported env vars**: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_EFFORT_LEVEL` (if configured)
+- **Fine-grained config**: Each provider supports `_SONNET_MODEL`, `_OPUS_MODEL`, `_HAIKU_MODEL`, `_SUBAGENT_MODEL`, and `_EFFORT_LEVEL` suffixes for per-tier model overrides
 - **Claude official**: Uses your Claude Code subscription by default, or `CLAUDE_API_KEY` if set
 - **OpenRouter**: Requires explicit `ccm open <provider>` command
 - **Project override**: Only affects the current project via `.claude/settings.local.json`
