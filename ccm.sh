@@ -186,6 +186,10 @@ MINIMAX_MODEL=MiniMax-M2.5
 SEED_MODEL=ark-code-latest
 STEPFUN_MODEL=step-3.5-flash
 
+# —— 可选：细粒度模型字段（不设置则使用主模型）——
+# 可选字段: _SONNET_MODEL, _OPUS_MODEL, _HAIKU_MODEL, _SUBAGENT_MODEL, _EFFORT_LEVEL
+# 用法: DEEPSEEK_HAIKU_MODEL=deepseek/deepseek-v3.2
+
 EOF
         echo -e "${YELLOW}⚠️  $(t 'config_created'): $CONFIG_FILE${NC}" >&2
         echo -e "${YELLOW}   $(t 'edit_file_to_add_keys')${NC}" >&2
@@ -295,6 +299,10 @@ HAIKU_MODEL=claude-haiku-4-5-20251001
 MINIMAX_MODEL=MiniMax-M2.5
 SEED_MODEL=ark-code-latest
 STEPFUN_MODEL=step-3.5-flash
+
+# —— 可选：细粒度模型字段（不设置则使用主模型）——
+# 可选字段: _SONNET_MODEL, _OPUS_MODEL, _HAIKU_MODEL, _SUBAGENT_MODEL, _EFFORT_LEVEL
+# 用法: DEEPSEEK_HAIKU_MODEL=deepseek/deepseek-v3.2
 
 EOF
     echo -e "${YELLOW}⚠️  $(t 'config_created'): $CONFIG_FILE${NC}" >&2
@@ -416,6 +424,11 @@ project_write_glm_settings() {
     fi
 
     local glm_model="${GLM_MODEL:-glm-5}"
+    local glm_sonnet="${GLM_SONNET_MODEL:-$glm_model}"
+    local glm_opus="${GLM_OPUS_MODEL:-$glm_model}"
+    local glm_haiku="${GLM_HAIKU_MODEL:-$glm_model}"
+    local glm_subagent="${GLM_SUBAGENT_MODEL:-$glm_model}"
+    local glm_effort="${GLM_EFFORT_LEVEL:-}"
     local base_url=""
     case "$region" in
         "global")
@@ -440,10 +453,11 @@ project_write_glm_settings() {
     "ANTHROPIC_BASE_URL": "${base_url}",
     "ANTHROPIC_AUTH_TOKEN": "${GLM_API_KEY}",
     "ANTHROPIC_MODEL": "${glm_model}",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "${glm_model}",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "${glm_model}",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "${glm_model}",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "${glm_model}"
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$glm_sonnet",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$glm_opus",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$glm_haiku",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "$glm_subagent"$([[ -n "$glm_effort" ]] && echo ",
+    \"CLAUDE_CODE_EFFORT_LEVEL\": \"$glm_effort\"")
   }
 }
 EOF
@@ -496,6 +510,38 @@ project_write_settings() {
         config_token="${!config_token_var}"
     fi
 
+    # Map provider to config variable prefix for per-field overrides
+    local cfg_prefix=""
+    case "$provider" in
+        "glm"|"glm5") cfg_prefix="GLM" ;;
+        "deepseek"|"ds") cfg_prefix="DEEPSEEK" ;;
+        "kimi"|"kimi2")
+            if [[ "$region" == "china" ]]; then cfg_prefix="KIMI_CN"; else cfg_prefix="KIMI"; fi ;;
+        "qwen") cfg_prefix="QWEN" ;;
+        "minimax"|"mm") cfg_prefix="MINIMAX" ;;
+        "seed"|"doubao") cfg_prefix="SEED" ;;
+        "stepfun") cfg_prefix="STEPFUN" ;;
+        "claude"|"sonnet"|"s") cfg_prefix="CLAUDE" ;;
+    esac
+
+    local sonnet_var="${cfg_prefix}_SONNET_MODEL"
+    local opus_var="${cfg_prefix}_OPUS_MODEL"
+    local haiku_var="${cfg_prefix}_HAIKU_MODEL"
+    local subagent_var="${cfg_prefix}_SUBAGENT_MODEL"
+    local effort_var="${cfg_prefix}_EFFORT_LEVEL"
+
+    local field_sonnet="${!sonnet_var:-$config_model}"
+    local field_opus="${!opus_var:-$config_model}"
+    local field_haiku="${!haiku_var:-$config_model}"
+    local field_subagent="${!subagent_var:-$config_model}"
+    local field_effort="${!effort_var:-}"
+
+    # Claude: respect existing OPUS_MODEL/HAIKU_MODEL
+    if [[ "$cfg_prefix" == "CLAUDE" ]]; then
+        field_opus="${!opus_var:-${OPUS_MODEL:-$config_model}}"
+        field_haiku="${!haiku_var:-${HAIKU_MODEL:-$config_model}}"
+    fi
+
     local settings_path
     settings_path="$(project_settings_path)"
     local settings_dir
@@ -519,11 +565,12 @@ project_write_settings() {
   "env": {
     "ANTHROPIC_BASE_URL": "${config_base_url}",
     "ANTHROPIC_MODEL": "${config_model}",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "${config_model}",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "${config_model}",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "${config_model}",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "${config_model}"$([[ -n "$config_token" ]] && echo ",
-    \"ANTHROPIC_AUTH_TOKEN\": \"$config_token\"")
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$field_sonnet",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$field_opus",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$field_haiku",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "$field_subagent"$([[ -n "$config_token" ]] && echo ",
+    \"ANTHROPIC_AUTH_TOKEN\": \"$config_token\"")$([[ -n "$field_effort" ]] && echo ",
+    \"CLAUDE_CODE_EFFORT_LEVEL\": \"$field_effort\"")
   }
 }
 EOF
@@ -704,6 +751,38 @@ user_write_settings() {
         config_token="${!config_token_var}"
     fi
 
+    # Map provider to config variable prefix for per-field overrides
+    local cfg_prefix=""
+    case "$provider" in
+        "glm"|"glm5") cfg_prefix="GLM" ;;
+        "deepseek"|"ds") cfg_prefix="DEEPSEEK" ;;
+        "kimi"|"kimi2")
+            if [[ "$region" == "china" ]]; then cfg_prefix="KIMI_CN"; else cfg_prefix="KIMI"; fi ;;
+        "qwen") cfg_prefix="QWEN" ;;
+        "minimax"|"mm") cfg_prefix="MINIMAX" ;;
+        "seed"|"doubao") cfg_prefix="SEED" ;;
+        "stepfun") cfg_prefix="STEPFUN" ;;
+        "claude"|"sonnet"|"s") cfg_prefix="CLAUDE" ;;
+    esac
+
+    local sonnet_var="${cfg_prefix}_SONNET_MODEL"
+    local opus_var="${cfg_prefix}_OPUS_MODEL"
+    local haiku_var="${cfg_prefix}_HAIKU_MODEL"
+    local subagent_var="${cfg_prefix}_SUBAGENT_MODEL"
+    local effort_var="${cfg_prefix}_EFFORT_LEVEL"
+
+    local field_sonnet="${!sonnet_var:-$config_model}"
+    local field_opus="${!opus_var:-$config_model}"
+    local field_haiku="${!haiku_var:-$config_model}"
+    local field_subagent="${!subagent_var:-$config_model}"
+    local field_effort="${!effort_var:-}"
+
+    # Claude: respect existing OPUS_MODEL/HAIKU_MODEL
+    if [[ "$cfg_prefix" == "CLAUDE" ]]; then
+        field_opus="${!opus_var:-${OPUS_MODEL:-$config_model}}"
+        field_haiku="${!haiku_var:-${HAIKU_MODEL:-$config_model}}"
+    fi
+
     local settings_path
     settings_path="$(user_settings_path)"
     local settings_dir
@@ -743,12 +822,13 @@ existing['ccmRegion'] = '$region'
 existing['env'] = {
     'ANTHROPIC_BASE_URL': '$config_base_url',
     'ANTHROPIC_MODEL': '$config_model',
-    'ANTHROPIC_DEFAULT_SONNET_MODEL': '$config_model',
-    'ANTHROPIC_DEFAULT_OPUS_MODEL': '$config_model',
-    'ANTHROPIC_DEFAULT_HAIKU_MODEL': '$config_model',
-    'CLAUDE_CODE_SUBAGENT_MODEL': '$config_model'
+    'ANTHROPIC_DEFAULT_SONNET_MODEL': '$field_sonnet',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL': '$field_opus',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL': '$field_haiku',
+    'CLAUDE_CODE_SUBAGENT_MODEL': '$field_subagent'
 }
 $(if [[ -n "$config_token" ]]; then echo "existing['env']['ANTHROPIC_AUTH_TOKEN'] = '$config_token'"; fi)
+$(if [[ -n "$field_effort" ]]; then echo "existing['env']['CLAUDE_CODE_EFFORT_LEVEL'] = '$field_effort'"; fi)
 
 with open(settings_path, 'w') as f:
     json.dump(existing, f, indent=2)
@@ -765,11 +845,12 @@ PYTHON_EOF
   "env": {
     "ANTHROPIC_BASE_URL": "$config_base_url",
     "ANTHROPIC_MODEL": "$config_model",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$config_model",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$config_model",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$config_model",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "$config_model"$([[ -n "$config_token" ]] && echo ",
-    \"ANTHROPIC_AUTH_TOKEN\": \"$config_token\"")
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$field_sonnet",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$field_opus",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$field_haiku",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "$field_subagent"$([[ -n "$config_token" ]] && echo ",
+    \"ANTHROPIC_AUTH_TOKEN\": \"$config_token\"")$([[ -n "$field_effort" ]] && echo ",
+    \"CLAUDE_CODE_EFFORT_LEVEL\": \"$field_effort\"")
   }
 }
 EOF
@@ -1476,6 +1557,7 @@ show_status() {
     echo "   OPUS_MODEL: ${ANTHROPIC_DEFAULT_OPUS_MODEL:-'$(t "not_set")'}"
     echo "   SONNET_MODEL: ${ANTHROPIC_DEFAULT_SONNET_MODEL:-'$(t "not_set")'}"
     echo "   HAIKU_MODEL: ${ANTHROPIC_DEFAULT_HAIKU_MODEL:-'$(t "not_set")'}"
+    echo "   EFFORT_LEVEL: ${CLAUDE_CODE_EFFORT_LEVEL:-'$(t "not_set")'}"
     echo ""
     echo -e "${BLUE}🔧 $(t 'env_vars_status'):${NC}"
     echo "   GLM_API_KEY: $(mask_presence GLM_API_KEY)"
@@ -1501,6 +1583,7 @@ clean_env() {
     unset ANTHROPIC_DEFAULT_OPUS_MODEL
     unset ANTHROPIC_DEFAULT_HAIKU_MODEL
     unset CLAUDE_CODE_SUBAGENT_MODEL
+    unset CLAUDE_CODE_EFFORT_LEVEL
     unset API_TIMEOUT_MS
     unset CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
 }
@@ -1511,13 +1594,20 @@ switch_to_deepseek() {
     clean_env
     if is_effectively_set "$DEEPSEEK_API_KEY"; then
         # 官方 Deepseek 的 Anthropic 兼容端点
+        local ds_model="${DEEPSEEK_MODEL:-deepseek-chat}"
+        local ds_sonnet="${DEEPSEEK_SONNET_MODEL:-$ds_model}"
+        local ds_opus="${DEEPSEEK_OPUS_MODEL:-$ds_model}"
+        local ds_haiku="${DEEPSEEK_HAIKU_MODEL:-$ds_model}"
+        local ds_subagent="${DEEPSEEK_SUBAGENT_MODEL:-$ds_model}"
+        local ds_effort="${DEEPSEEK_EFFORT_LEVEL:-}"
         export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
         export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
-        export ANTHROPIC_MODEL="deepseek-chat"
-        export ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek/deepseek-v3.2"
-        export ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek/deepseek-v3.2"
-        export ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek/deepseek-v3.2"
-        export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+        export ANTHROPIC_MODEL="$ds_model"
+        export ANTHROPIC_DEFAULT_SONNET_MODEL="$ds_sonnet"
+        export ANTHROPIC_DEFAULT_OPUS_MODEL="$ds_opus"
+        export ANTHROPIC_DEFAULT_HAIKU_MODEL="$ds_haiku"
+        export CLAUDE_CODE_SUBAGENT_MODEL="$ds_subagent"
+        [[ -n "$ds_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$ds_effort"
         echo -e "${GREEN}✅ $(t 'switched_to') Deepseek（$(t 'official')）${NC}"
     else
         echo -e "${RED}❌ Please configure DEEPSEEK_API_KEY${NC}"
@@ -1546,11 +1636,18 @@ switch_to_claude() {
     if is_effectively_set "$CLAUDE_API_KEY"; then
         export ANTHROPIC_AUTH_TOKEN="$CLAUDE_API_KEY"
     fi
-    export ANTHROPIC_MODEL="${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="${OPUS_MODEL:-claude-opus-4-6}"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="${HAIKU_MODEL:-claude-haiku-4-5-20251001}"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    local claude_model="${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}"
+    local claude_sonnet="${CLAUDE_SONNET_MODEL:-$claude_model}"
+    local claude_opus="${CLAUDE_OPUS_MODEL:-${OPUS_MODEL:-claude-opus-4-6}}"
+    local claude_haiku="${CLAUDE_HAIKU_MODEL:-${HAIKU_MODEL:-claude-haiku-4-5-20251001}}"
+    local claude_subagent="${CLAUDE_SUBAGENT_MODEL:-$claude_model}"
+    local claude_effort="${CLAUDE_EFFORT_LEVEL:-}"
+    export ANTHROPIC_MODEL="$claude_model"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$claude_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$claude_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$claude_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$claude_subagent"
+    [[ -n "$claude_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$claude_effort"
     echo -e "${GREEN}✅ 已切换到 Claude Sonnet 4.5 (使用 Claude Pro 订阅)${NC}"
     if [[ -n "$account_name" ]]; then
         echo "   $(t 'account'): $account_name"
@@ -1584,13 +1681,19 @@ switch_to_glm() {
             ;;
     esac
     local glm_model="${GLM_MODEL:-glm-5}"
+    local glm_sonnet="${GLM_SONNET_MODEL:-$glm_model}"
+    local glm_opus="${GLM_OPUS_MODEL:-$glm_model}"
+    local glm_haiku="${GLM_HAIKU_MODEL:-$glm_model}"
+    local glm_subagent="${GLM_SUBAGENT_MODEL:-$glm_model}"
+    local glm_effort="${GLM_EFFORT_LEVEL:-}"
     export ANTHROPIC_BASE_URL="$base_url"
     export ANTHROPIC_AUTH_TOKEN="$GLM_API_KEY"
     export ANTHROPIC_MODEL="$glm_model"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="$glm_model"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="$glm_model"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$glm_model"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$glm_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$glm_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$glm_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$glm_subagent"
+    [[ -n "$glm_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$glm_effort"
     echo -e "${GREEN}✅ 已切换到 GLM（${region}）${NC}"
     echo "   BASE_URL: $ANTHROPIC_BASE_URL"
     echo "   MODEL: $ANTHROPIC_MODEL"
@@ -1605,13 +1708,20 @@ switch_to_kimi() {
         return 1
     fi
     # 海外 Kimi 端点
+    local kimi_model="${KIMI_MODEL:-kimi-k2.5}"
+    local kimi_sonnet="${KIMI_SONNET_MODEL:-$kimi_model}"
+    local kimi_opus="${KIMI_OPUS_MODEL:-$kimi_model}"
+    local kimi_haiku="${KIMI_HAIKU_MODEL:-$kimi_model}"
+    local kimi_subagent="${KIMI_SUBAGENT_MODEL:-$kimi_model}"
+    local kimi_effort="${KIMI_EFFORT_LEVEL:-}"
     export ANTHROPIC_BASE_URL="https://api.moonshot.ai/anthropic"
     export ANTHROPIC_AUTH_TOKEN="$KIMI_API_KEY"
-    export ANTHROPIC_MODEL="kimi-k2.5"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="kimi-k2.5"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k2.5"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-k2.5"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    export ANTHROPIC_MODEL="$kimi_model"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$kimi_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$kimi_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$kimi_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$kimi_subagent"
+    [[ -n "$kimi_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$kimi_effort"
     echo -e "${GREEN}✅ $(t 'switched_to') KIMI（$(t 'official')）${NC}"
     echo "   BASE_URL: $ANTHROPIC_BASE_URL"
     echo "   MODEL: $ANTHROPIC_MODEL"
@@ -1626,13 +1736,20 @@ switch_to_kimi_cn() {
         return 1
     fi
     # 国内 Kimi 端点
+    local kimi_cn_model="${KIMI_CN_MODEL:-kimi-k2.5}"
+    local kimi_cn_sonnet="${KIMI_CN_SONNET_MODEL:-$kimi_cn_model}"
+    local kimi_cn_opus="${KIMI_CN_OPUS_MODEL:-$kimi_cn_model}"
+    local kimi_cn_haiku="${KIMI_CN_HAIKU_MODEL:-$kimi_cn_model}"
+    local kimi_cn_subagent="${KIMI_CN_SUBAGENT_MODEL:-$kimi_cn_model}"
+    local kimi_cn_effort="${KIMI_CN_EFFORT_LEVEL:-}"
     export ANTHROPIC_BASE_URL="https://api.moonshot.cn/anthropic"
     export ANTHROPIC_AUTH_TOKEN="$KIMI_API_KEY"
-    export ANTHROPIC_MODEL="kimi-k2.5"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="kimi-k2.5"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k2.5"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-k2.5"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    export ANTHROPIC_MODEL="$kimi_cn_model"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$kimi_cn_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$kimi_cn_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$kimi_cn_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$kimi_cn_subagent"
+    [[ -n "$kimi_cn_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$kimi_cn_effort"
     echo -e "${GREEN}✅ $(t 'switched_to') KIMI CN（$(t 'official')）${NC}"
     echo "   BASE_URL: $ANTHROPIC_BASE_URL"
     echo "   MODEL: $ANTHROPIC_MODEL"
@@ -1663,13 +1780,19 @@ switch_to_minimax() {
             ;;
     esac
     local mm_model="${MINIMAX_MODEL:-MiniMax-M2.5}"
+    local mm_sonnet="${MINIMAX_SONNET_MODEL:-$mm_model}"
+    local mm_opus="${MINIMAX_OPUS_MODEL:-$mm_model}"
+    local mm_haiku="${MINIMAX_HAIKU_MODEL:-$mm_model}"
+    local mm_subagent="${MINIMAX_SUBAGENT_MODEL:-$mm_model}"
+    local mm_effort="${MINIMAX_EFFORT_LEVEL:-}"
     export ANTHROPIC_BASE_URL="$base_url"
     export ANTHROPIC_AUTH_TOKEN="$MINIMAX_API_KEY"
     export ANTHROPIC_MODEL="$mm_model"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="$mm_model"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="$mm_model"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$mm_model"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$mm_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$mm_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$mm_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$mm_subagent"
+    [[ -n "$mm_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$mm_effort"
     echo -e "${GREEN}✅ $(t 'switched_to') MiniMax (${region})（$(t 'official')）${NC}"
     echo "   BASE_URL: $ANTHROPIC_BASE_URL"
     echo "   MODEL: $ANTHROPIC_MODEL"
@@ -1700,13 +1823,19 @@ switch_to_qwen() {
             ;;
     esac
     local qwen_model="${QWEN_MODEL:-qwen3-max-2026-01-23}"
+    local qwen_sonnet="${QWEN_SONNET_MODEL:-$qwen_model}"
+    local qwen_opus="${QWEN_OPUS_MODEL:-$qwen_model}"
+    local qwen_haiku="${QWEN_HAIKU_MODEL:-$qwen_model}"
+    local qwen_subagent="${QWEN_SUBAGENT_MODEL:-$qwen_model}"
+    local qwen_effort="${QWEN_EFFORT_LEVEL:-}"
     export ANTHROPIC_BASE_URL="$base_url"
     export ANTHROPIC_AUTH_TOKEN="$QWEN_API_KEY"
     export ANTHROPIC_MODEL="$qwen_model"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="$qwen_model"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="$qwen_model"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="qwen3-coder-plus"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$qwen_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$qwen_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$qwen_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$qwen_subagent"
+    [[ -n "$qwen_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$qwen_effort"
     echo -e "${GREEN}✅ $(t 'switched_to') Qwen (${region})（$(t 'official')）${NC}"
     echo "   BASE_URL: $ANTHROPIC_BASE_URL"
     echo "   MODEL: $ANTHROPIC_MODEL"
@@ -1748,11 +1877,17 @@ switch_to_seed() {
             return 1
             ;;
     esac
+    local seed_sonnet="${SEED_SONNET_MODEL:-$seed_model}"
+    local seed_opus="${SEED_OPUS_MODEL:-$seed_model}"
+    local seed_haiku="${SEED_HAIKU_MODEL:-$seed_model}"
+    local seed_subagent="${SEED_SUBAGENT_MODEL:-$seed_model}"
+    local seed_effort="${SEED_EFFORT_LEVEL:-}"
     export ANTHROPIC_MODEL="$seed_model"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="$seed_model"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="$seed_model"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$seed_model"
-    export CLAUDE_CODE_SUBAGENT_MODEL="$ANTHROPIC_MODEL"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$seed_sonnet"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$seed_opus"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$seed_haiku"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$seed_subagent"
+    [[ -n "$seed_effort" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$seed_effort"
     echo -e "${GREEN}✅ $(t 'switched_to') Seed-Code（$(t 'official')）${NC}"
     echo "   BASE_URL: $ANTHROPIC_BASE_URL"
     echo "   MODEL: $ANTHROPIC_MODEL"
@@ -2048,7 +2183,31 @@ emit_openrouter_exports() {
             ;;
     esac
 
-    local prelude="unset ANTHROPIC_BASE_URL ANTHROPIC_API_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL API_TIMEOUT_MS CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+    # Map provider to config variable prefix for per-field overrides
+    local cfg_prefix=""
+    case "$provider" in
+        "claude"|"anthropic"|"default") cfg_prefix="CLAUDE" ;;
+        "kimi") cfg_prefix="KIMI" ;;
+        "deepseek"|"ds") cfg_prefix="DEEPSEEK" ;;
+        "glm"|"glm5") cfg_prefix="GLM" ;;
+        "qwen") cfg_prefix="QWEN" ;;
+        "minimax"|"mm") cfg_prefix="MINIMAX" ;;
+        "stepfun"|"sf"|"stepfun-free"|"sf-free") cfg_prefix="STEPFUN" ;;
+    esac
+
+    local sonnet_var="${cfg_prefix}_SONNET_MODEL"
+    local opus_var="${cfg_prefix}_OPUS_MODEL"
+    local haiku_var="${cfg_prefix}_HAIKU_MODEL"
+    local subagent_var="${cfg_prefix}_SUBAGENT_MODEL"
+    local effort_var="${cfg_prefix}_EFFORT_LEVEL"
+
+    local resolved_sonnet="${!sonnet_var:-$default_sonnet}"
+    local resolved_opus="${!opus_var:-$default_opus}"
+    local resolved_haiku="${!haiku_var:-$default_haiku}"
+    local resolved_subagent="${!subagent_var:-$model}"
+    local resolved_effort="${!effort_var:-}"
+
+    local prelude="unset ANTHROPIC_BASE_URL ANTHROPIC_API_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_EFFORT_LEVEL API_TIMEOUT_MS CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
     echo "$prelude"
     echo "export ANTHROPIC_BASE_URL='https://openrouter.ai/api'"
     echo "export ANTHROPIC_API_URL='https://openrouter.ai/api'"
@@ -2057,8 +2216,9 @@ emit_openrouter_exports() {
     echo "export ANTHROPIC_API_KEY=''"
     echo "export ANTHROPIC_MODEL='${model}'"
     echo "export ANTHROPIC_SMALL_FAST_MODEL='${small}'"
-    emit_default_models "$default_sonnet" "$default_opus" "$default_haiku"
-    emit_subagent_model "$model"
+    emit_default_models "$resolved_sonnet" "$resolved_opus" "$resolved_haiku"
+    emit_subagent_model "$resolved_subagent"
+    [[ -n "$resolved_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${resolved_effort}'"
 }
 
 emit_env_exports() {
@@ -2068,7 +2228,7 @@ emit_env_exports() {
     load_config || return 1
 
     # 通用前导：清理旧变量
-    local prelude="unset ANTHROPIC_BASE_URL ANTHROPIC_API_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL API_TIMEOUT_MS CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+    local prelude="unset ANTHROPIC_BASE_URL ANTHROPIC_API_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_EFFORT_LEVEL API_TIMEOUT_MS CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
 
     case "$target" in
         "open")
@@ -2081,9 +2241,15 @@ emit_env_exports() {
                 echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
                 echo "export ANTHROPIC_AUTH_TOKEN=\"\${DEEPSEEK_API_KEY}\""
                 local ds_model="${DEEPSEEK_MODEL:-deepseek-chat}"
+                local ds_sonnet="${DEEPSEEK_SONNET_MODEL:-$ds_model}"
+                local ds_opus="${DEEPSEEK_OPUS_MODEL:-$ds_model}"
+                local ds_haiku="${DEEPSEEK_HAIKU_MODEL:-$ds_model}"
+                local ds_subagent="${DEEPSEEK_SUBAGENT_MODEL:-$ds_model}"
+                local ds_effort="${DEEPSEEK_EFFORT_LEVEL:-}"
                 echo "export ANTHROPIC_MODEL='${ds_model}'"
-                emit_default_models "deepseek/deepseek-v3.2" "deepseek/deepseek-v3.2" "deepseek/deepseek-v3.2"
-                emit_subagent_model "$ds_model"
+                emit_default_models "$ds_sonnet" "$ds_opus" "$ds_haiku"
+                emit_subagent_model "$ds_subagent"
+                [[ -n "$ds_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${ds_effort}'"
             else
                 echo -e "${RED}❌ Please configure DEEPSEEK_API_KEY${NC}" >&2
                 return 1
@@ -2109,17 +2275,28 @@ emit_env_exports() {
             if [[ "$region" == "global" ]]; then
                 kimi_base_url="https://api.moonshot.ai/anthropic"
                 kimi_model="${KIMI_MODEL:-kimi-k2.5}"
+                local kimi_sonnet="${KIMI_SONNET_MODEL:-$kimi_model}"
+                local kimi_opus="${KIMI_OPUS_MODEL:-$kimi_model}"
+                local kimi_haiku="${KIMI_HAIKU_MODEL:-$kimi_model}"
+                local kimi_subagent="${KIMI_SUBAGENT_MODEL:-$kimi_model}"
+                local kimi_effort="${KIMI_EFFORT_LEVEL:-}"
             else
                 kimi_base_url="https://api.moonshot.cn/anthropic"
                 kimi_model="${KIMI_CN_MODEL:-kimi-k2.5}"
+                local kimi_sonnet="${KIMI_CN_SONNET_MODEL:-$kimi_model}"
+                local kimi_opus="${KIMI_CN_OPUS_MODEL:-$kimi_model}"
+                local kimi_haiku="${KIMI_CN_HAIKU_MODEL:-$kimi_model}"
+                local kimi_subagent="${KIMI_CN_SUBAGENT_MODEL:-$kimi_model}"
+                local kimi_effort="${KIMI_CN_EFFORT_LEVEL:-}"
             fi
             echo "$prelude"
             echo "export ANTHROPIC_BASE_URL='${kimi_base_url}'"
             echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
             echo "export ANTHROPIC_AUTH_TOKEN=\"\${KIMI_API_KEY}\""
             echo "export ANTHROPIC_MODEL='${kimi_model}'"
-            emit_default_models "$kimi_model" "$kimi_model" "$kimi_model"
-            emit_subagent_model "$kimi_model"
+            emit_default_models "$kimi_sonnet" "$kimi_opus" "$kimi_haiku"
+            emit_subagent_model "$kimi_subagent"
+            [[ -n "$kimi_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${kimi_effort}'"
             ;;
         "qwen")
             if ! is_effectively_set "$QWEN_API_KEY"; then
@@ -2142,13 +2319,19 @@ emit_env_exports() {
                     ;;
             esac
             local qwen_model="${QWEN_MODEL:-qwen3-max-2026-01-23}"
+            local qwen_sonnet="${QWEN_SONNET_MODEL:-$qwen_model}"
+            local qwen_opus="${QWEN_OPUS_MODEL:-$qwen_model}"
+            local qwen_haiku="${QWEN_HAIKU_MODEL:-$qwen_model}"
+            local qwen_subagent="${QWEN_SUBAGENT_MODEL:-$qwen_model}"
+            local qwen_effort="${QWEN_EFFORT_LEVEL:-}"
             echo "$prelude"
             echo "export ANTHROPIC_BASE_URL='${qwen_base_url}'"
             echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
             echo "export ANTHROPIC_AUTH_TOKEN=\"\${QWEN_API_KEY}\""
             echo "export ANTHROPIC_MODEL='${qwen_model}'"
-            emit_default_models "$qwen_model" "$qwen_model" "qwen3-coder-plus"
-            emit_subagent_model "$qwen_model"
+            emit_default_models "$qwen_sonnet" "$qwen_opus" "$qwen_haiku"
+            emit_subagent_model "$qwen_subagent"
+            [[ -n "$qwen_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${qwen_effort}'"
             ;;
         "glm"|"glm5")
             if ! is_effectively_set "$GLM_API_KEY"; then
@@ -2171,13 +2354,19 @@ emit_env_exports() {
                     ;;
             esac
             local glm_model="${GLM_MODEL:-glm-5}"
+            local glm_sonnet="${GLM_SONNET_MODEL:-$glm_model}"
+            local glm_opus="${GLM_OPUS_MODEL:-$glm_model}"
+            local glm_haiku="${GLM_HAIKU_MODEL:-$glm_model}"
+            local glm_subagent="${GLM_SUBAGENT_MODEL:-$glm_model}"
+            local glm_effort="${GLM_EFFORT_LEVEL:-}"
             echo "$prelude"
             echo "export ANTHROPIC_BASE_URL='${glm_base_url}'"
             echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
             echo "export ANTHROPIC_AUTH_TOKEN=\"\${GLM_API_KEY}\""
             echo "export ANTHROPIC_MODEL='${glm_model}'"
-            emit_default_models "$glm_model" "$glm_model" "$glm_model"
-            emit_subagent_model "$glm_model"
+            emit_default_models "$glm_sonnet" "$glm_opus" "$glm_haiku"
+            emit_subagent_model "$glm_subagent"
+            [[ -n "$glm_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${glm_effort}'"
             ;;
         "minimax"|"mm")
             if ! is_effectively_set "$MINIMAX_API_KEY"; then
@@ -2200,13 +2389,19 @@ emit_env_exports() {
                     ;;
             esac
             local mm_model="${MINIMAX_MODEL:-MiniMax-M2.5}"
+            local mm_sonnet="${MINIMAX_SONNET_MODEL:-$mm_model}"
+            local mm_opus="${MINIMAX_OPUS_MODEL:-$mm_model}"
+            local mm_haiku="${MINIMAX_HAIKU_MODEL:-$mm_model}"
+            local mm_subagent="${MINIMAX_SUBAGENT_MODEL:-$mm_model}"
+            local mm_effort="${MINIMAX_EFFORT_LEVEL:-}"
             echo "$prelude"
             echo "export ANTHROPIC_BASE_URL='${mm_base_url}'"
             echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
             echo "export ANTHROPIC_AUTH_TOKEN=\"\${MINIMAX_API_KEY}\""
             echo "export ANTHROPIC_MODEL='${mm_model}'"
-            emit_default_models "$mm_model" "$mm_model" "$mm_model"
-            emit_subagent_model "$mm_model"
+            emit_default_models "$mm_sonnet" "$mm_opus" "$mm_haiku"
+            emit_subagent_model "$mm_subagent"
+            [[ -n "$mm_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${mm_effort}'"
             ;;
         "seed"|"doubao")
             if ! is_effectively_set "$ARK_API_KEY"; then
@@ -2237,13 +2432,19 @@ emit_env_exports() {
                     return 1
                     ;;
             esac
+            local seed_sonnet="${SEED_SONNET_MODEL:-$seed_model}"
+            local seed_opus="${SEED_OPUS_MODEL:-$seed_model}"
+            local seed_haiku="${SEED_HAIKU_MODEL:-$seed_model}"
+            local seed_subagent="${SEED_SUBAGENT_MODEL:-$seed_model}"
+            local seed_effort="${SEED_EFFORT_LEVEL:-}"
             echo "$prelude"
             echo "export ANTHROPIC_BASE_URL='https://ark.cn-beijing.volces.com/api/coding'"
             echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
             echo "export ANTHROPIC_AUTH_TOKEN=\"\${ARK_API_KEY}\""
             echo "export ANTHROPIC_MODEL='${seed_model}'"
-            emit_default_models "$seed_model" "$seed_model" "$seed_model"
-            emit_subagent_model "$seed_model"
+            emit_default_models "$seed_sonnet" "$seed_opus" "$seed_haiku"
+            emit_subagent_model "$seed_subagent"
+            [[ -n "$seed_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${seed_effort}'"
             ;;
         "stepfun")
             if ! is_effectively_set "$STEPFUN_API_KEY"; then
@@ -2255,9 +2456,15 @@ emit_env_exports() {
             echo "if [ -f \"\$HOME/.ccm_config\" ]; then . \"\$HOME/.ccm_config\" >/dev/null 2>&1; fi"
             echo "export ANTHROPIC_AUTH_TOKEN=\"\${STEPFUN_API_KEY}\""
             local stepfun_model="${STEPFUN_MODEL:-step-3.5-flash}"
+            local stepfun_sonnet="${STEPFUN_SONNET_MODEL:-$stepfun_model}"
+            local stepfun_opus="${STEPFUN_OPUS_MODEL:-$stepfun_model}"
+            local stepfun_haiku="${STEPFUN_HAIKU_MODEL:-$stepfun_model}"
+            local stepfun_subagent="${STEPFUN_SUBAGENT_MODEL:-$stepfun_model}"
+            local stepfun_effort="${STEPFUN_EFFORT_LEVEL:-}"
             echo "export ANTHROPIC_MODEL='${stepfun_model}'"
-            emit_default_models "$stepfun_model" "$stepfun_model" "$stepfun_model"
-            emit_subagent_model "$stepfun_model"
+            emit_default_models "$stepfun_sonnet" "$stepfun_opus" "$stepfun_haiku"
+            emit_subagent_model "$stepfun_subagent"
+            [[ -n "$stepfun_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${stepfun_effort}'"
             ;;
         "claude"|"sonnet"|"s")
             echo "$prelude"
@@ -2266,15 +2473,18 @@ emit_env_exports() {
             echo "unset ANTHROPIC_API_URL"
             echo "unset ANTHROPIC_API_KEY"
             local claude_model="${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}"
-            local default_sonnet="${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}"
-            local default_opus="${OPUS_MODEL:-claude-opus-4-6}"
-            local default_haiku="${HAIKU_MODEL:-claude-haiku-4-5-20251001}"
+            local claude_sonnet="${CLAUDE_SONNET_MODEL:-$claude_model}"
+            local claude_opus="${CLAUDE_OPUS_MODEL:-${OPUS_MODEL:-claude-opus-4-6}}"
+            local claude_haiku="${CLAUDE_HAIKU_MODEL:-${HAIKU_MODEL:-claude-haiku-4-5-20251001}}"
+            local claude_subagent="${CLAUDE_SUBAGENT_MODEL:-$claude_model}"
+            local claude_effort="${CLAUDE_EFFORT_LEVEL:-}"
             echo "export ANTHROPIC_MODEL='${claude_model}'"
             if is_effectively_set "$CLAUDE_API_KEY"; then
                 echo "export ANTHROPIC_AUTH_TOKEN=\"\${CLAUDE_API_KEY}\""
             fi
-            emit_default_models "$default_sonnet" "$default_opus" "$default_haiku"
-            emit_subagent_model "$claude_model"
+            emit_default_models "$claude_sonnet" "$claude_opus" "$claude_haiku"
+            emit_subagent_model "$claude_subagent"
+            [[ -n "$claude_effort" ]] && echo "export CLAUDE_CODE_EFFORT_LEVEL='${claude_effort}'"
             ;;
         *)
             echo "# $(t 'usage'): $(basename "$0") env [deepseek|kimi|qwen|glm|minimax|seed|stepfun|claude|open]" 1>&2
